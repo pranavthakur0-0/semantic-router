@@ -104,7 +104,8 @@ func ConsolidateUser(ctx context.Context, store Store, userID string) (merged in
 			}
 
 			// Delete each source only while it still matches the listed version.
-			// A separate Get plus Forget loses an update that lands between them.
+			// The store compares and deletes in one operation. A separate Get
+			// plus Forget loses an update that lands between them.
 			removed, complete, replaceErr := forgetCurrentSources(ctx, replacer, versions)
 			deleted += len(removed)
 			if !complete && len(removed) == 0 {
