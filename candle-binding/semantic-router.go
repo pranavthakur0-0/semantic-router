@@ -3724,6 +3724,10 @@ func ClassifyCandleBertTokensWithLabels(text string, id2labelJSON string) (Token
 
 // InitLoRAUnifiedClassifier initializes the LoRA Unified Classifier
 func InitLoRAUnifiedClassifier(intentModelPath, piiModelPath, securityModelPath, architecture string, useCPU bool) error {
+	if err := unifiedMMBertRefused(runtime.GOOS, runtime.GOARCH, architecture, intentModelPath, piiModelPath, securityModelPath); err != nil {
+		return err
+	}
+
 	cIntentPath := C.CString(intentModelPath)
 	defer C.free(unsafe.Pointer(cIntentPath))
 

@@ -468,7 +468,9 @@ func ClassifyCandleBertTokensWithLabels(text string, id2labelJSON string) (Token
 	return TokenClassificationResult{}, ErrBackendUnavailable
 }
 
-// InitLoRAUnifiedClassifier initializes LoRA Unified Classifier
+// InitLoRAUnifiedClassifier initializes LoRA Unified Classifier. This stub has
+// no native loader, so it cannot hang; the error is backend-unavailable even
+// for a darwin/arm64 mmBERT request.
 func InitLoRAUnifiedClassifier(intentModelPath, piiModelPath, securityModelPath, architecture string, useCPU bool) error {
 	return ErrBackendUnavailable
 }

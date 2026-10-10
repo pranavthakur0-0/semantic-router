@@ -1026,7 +1026,7 @@ pub extern "C" fn classify_batch_with_lora(
     // Get Arc from OnceLock (zero lock overhead!)
     // OnceLock.get() is just an atomic load - no mutex, no contention
     let engine = match PARALLEL_LORA_ENGINE.get() {
-        Some(e) => e.clone(), // Cheap Arc clone for concurrent access
+        Some(stored) => stored.engine.clone(),
         None => {
             eprintln!("PARALLEL_LORA_ENGINE not initialized");
             return default_result;

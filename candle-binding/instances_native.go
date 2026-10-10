@@ -77,6 +77,16 @@ func instanceStrings(values ...string) ([]*C.char, func(), error) {
 }
 
 func nativeInstanceLoad(options InstanceOptions, task string) (uint64, error) {
+	// This is the owned-instance loading path used by Runtime.LoRABatch. Keep
+	// the platform gate before JSON serialization and, critically, before the
+	// C call: a context deadline cannot interrupt the darwin/arm64 native
+	// preparation deadlock once it has started (issue #2440).
+	switch task {
+	case "backbone", "sequence", "label_scores", "token", "nli", "hallucination":
+		if err := ValidateUnifiedMMBertClassifierPlatform(options.ModelType, options.ModelPath); err != nil {
+			return 0, err
+		}
+	}
 	payload, err := json.Marshal(options)
 	if err != nil {
 		return 0, err

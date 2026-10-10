@@ -7,6 +7,7 @@ pub mod similarity;
 pub mod tokenization;
 pub mod tokenization_window;
 pub mod unified_error;
+pub mod unified_platform;
 
 // Re-export main similarity functionality for backward compatibility
 pub use similarity::{normalize_l2, BertSimilarity};

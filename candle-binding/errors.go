@@ -12,3 +12,8 @@ import "errors"
 // typed sentinel so callers can detect the unavailable-backend condition with
 // errors.Is and fail closed instead of treating the result as a valid verdict.
 var ErrBackendUnavailable = errors.New("candle: native backend unavailable (built without cgo)")
+
+// ErrUnifiedMMBertUnsupported is returned when unified mmBERT classifier
+// initialization is refused before model preparation. On darwin/arm64 that
+// preparation can deadlock inside the native loader (issue #2440).
+var ErrUnifiedMMBertUnsupported = errors.New("candle: unified mmBERT classifier initialization refused before model preparation on darwin/arm64")

@@ -107,6 +107,11 @@ prompt/candidate budget or required output reserve. CPU uses float32; the existi
 Qwen3 generative accelerator paths use bfloat16. Unsupported device/precision
 requests fail explicitly.
 
+On Darwin/arm64, unified mmBERT classifier preparation is refused before native
+model loading because that loader can deadlock. This restriction does not apply
+to ordinary ModernBERT or to mmBERT embeddings; run the affected classifier
+workload on a supported runtime instead.
+
 [`semantic-router.go`](semantic-router.go) retains the legacy role-based wrappers
 for consumers being migrated, plus the existing MLP selector handles. New
 lifecycle-managed integrations should use owned task handles.

@@ -64,6 +64,12 @@ func (r *Runtime) candleResourceWithWindow(ctx context.Context, spec config.Reso
 		options.DocumentMaxInputTokens = spec.Deployment.Input.MaxTokens
 		options.Overflow = "reject"
 	}
+	// Refuse before artifactRevision fingerprints model weights. The owned
+	// classifier loader has the same guard as defense in depth, but reaching it
+	// would already violate the no-model-preparation guarantee on darwin/arm64.
+	if err := candle.ValidateUnifiedMMBertClassifierPlatform(options.ModelType, options.ModelPath); err != nil {
+		return nil, err
+	}
 	revision, err := r.artifactRevision(ctx, options.ModelPath)
 	if err != nil {
 		return nil, err

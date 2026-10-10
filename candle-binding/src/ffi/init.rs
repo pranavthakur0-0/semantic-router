@@ -5,7 +5,7 @@
 
 use std::ffi::{c_char, c_int, CStr};
 use std::path::Path;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::core::similarity::BertSimilarity;
 use crate::BertClassifier;
@@ -41,11 +41,19 @@ pub static DEBERTA_JAILBREAK_CLASSIFIER: OnceLock<
 pub static UNIFIED_CLASSIFIER: OnceLock<
     Arc<crate::classifiers::unified::DualPathUnifiedClassifier>,
 > = OnceLock::new();
-// Parallel LoRA engine for high-performance classification (primary path for LoRA models)
-// Already wrapped in Arc for cheap cloning and concurrent access
-pub static PARALLEL_LORA_ENGINE: OnceLock<
-    Arc<crate::classifiers::lora::parallel_engine::ParallelLoRAEngine>,
-> = OnceLock::new();
+// Parallel LoRA engine for high-performance classification (primary path for LoRA models).
+// The engine is wrapped in Arc for cheap cloning. The identity is the configuration
+// that populated the slot, so a later caller cannot treat a different model as its own.
+// PARALLEL_LORA_INIT serializes the empty-check and the load. OnceLock alone does not:
+// two callers can both observe an empty slot, and the loser of set() would otherwise
+// report success for a model that was discarded.
+pub struct StoredParallelLoRAEngine {
+    pub engine: Arc<crate::classifiers::lora::parallel_engine::ParallelLoRAEngine>,
+    pub identity: crate::core::unified_platform::LegacyEngineIdentity,
+}
+
+pub static PARALLEL_LORA_ENGINE: OnceLock<StoredParallelLoRAEngine> = OnceLock::new();
+static PARALLEL_LORA_INIT: Mutex<()> = Mutex::new(());
 // LoRA token classifier for token-level classification
 pub static LORA_TOKEN_CLASSIFIER: OnceLock<
     Arc<crate::classifiers::lora::token_lora::LoRATokenClassifier>,
@@ -1579,9 +1587,47 @@ pub unsafe extern "C" fn init_lora_unified_classifier(
         }
     };
 
-    // Check if already initialized - return success if so
-    if PARALLEL_LORA_ENGINE.get().is_some() {
-        return true;
+    // Issue #2440: refuse before the OnceLock fast path and before any weight
+    // load. A stored BERT engine must not make a later mmBERT request succeed.
+    // The darwin/arm64 hang parks every thread in __psynch_cvwait, so a caller
+    // timeout cannot interrupt preparation once it starts.
+    let refusal = crate::core::unified_platform::unified_mmbert_refusal(
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        _architecture_str,
+        &[intent_path, pii_path, security_path],
+    );
+    if let Some(reason) = refusal {
+        eprintln!("{reason}");
+        return false;
+    }
+
+    // Architecture is only an mmBERT refusal signal. The engine is the three
+    // checkpoint paths plus the device, so spelling differences in the
+    // architecture string are not a second configuration.
+    let requested = crate::core::unified_platform::LegacyEngineIdentity::from_request(
+        intent_path,
+        pii_path,
+        security_path,
+        use_cpu,
+    );
+    // Hold the lock across the empty check and the load so two callers cannot
+    // both prepare. The waiter then accepts only the same configuration.
+    let _init_guard = PARALLEL_LORA_INIT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match crate::core::unified_platform::legacy_init_step(
+        PARALLEL_LORA_ENGINE.get().map(|stored| &stored.identity),
+        &requested,
+        None,
+    ) {
+        crate::core::unified_platform::LegacyInitStep::Refuse => return false,
+        crate::core::unified_platform::LegacyInitStep::ReuseExisting => return true,
+        crate::core::unified_platform::LegacyInitStep::RejectConflict => {
+            eprintln!("{}", crate::core::unified_platform::LEGACY_ENGINE_CONFLICT);
+            return false;
+        }
+        crate::core::unified_platform::LegacyInitStep::Prepare => {}
     }
 
     // Load labels dynamically from model configurations
@@ -1623,10 +1669,20 @@ pub unsafe extern "C" fn init_lora_unified_classifier(
         use_cpu,
     ) {
         Ok(engine) => {
-            // Store in global static variable (Arc for efficient cloning during concurrent access)
-            // Return true even if already set (race condition)
-            PARALLEL_LORA_ENGINE.set(Arc::new(engine)).is_ok()
-                || PARALLEL_LORA_ENGINE.get().is_some()
+            let published = PARALLEL_LORA_ENGINE
+                .set(StoredParallelLoRAEngine {
+                    engine: Arc::new(engine),
+                    identity: requested.clone(),
+                })
+                .is_ok();
+            let stored_matches = PARALLEL_LORA_ENGINE
+                .get()
+                .is_some_and(|stored| stored.identity == requested);
+            if !crate::core::unified_platform::legacy_publish_result(published, stored_matches) {
+                eprintln!("{}", crate::core::unified_platform::LEGACY_ENGINE_CONFLICT);
+                return false;
+            }
+            true
         }
         Err(e) => {
             eprintln!(

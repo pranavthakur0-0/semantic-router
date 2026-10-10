@@ -31,6 +31,7 @@ func TestStubInitFailsClosed(t *testing.T) {
 	wantUnavailable(t, "InitPIIClassifier", InitPIIClassifier("path", 2, true))
 	wantUnavailable(t, "InitJailbreakClassifier", InitJailbreakClassifier("path", 2, true))
 	wantUnavailable(t, "InitLoRAUnifiedClassifier", InitLoRAUnifiedClassifier("i", "p", "s", "arch", true))
+	wantUnavailable(t, "InitLoRAUnifiedClassifier mmbert", InitLoRAUnifiedClassifier("i", "p", "s", "mmbert32k", true))
 	wantUnavailable(t, "InitQwen3MultiLoRAClassifier", InitQwen3MultiLoRAClassifier("base"))
 	wantUnavailable(t, "InitQwen3Guard", InitQwen3Guard("path"))
 	wantUnavailable(t, "InitMultiModalEmbeddingModel", InitMultiModalEmbeddingModel("path", true))

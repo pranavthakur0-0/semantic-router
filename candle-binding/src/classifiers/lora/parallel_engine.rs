@@ -29,6 +29,17 @@ impl ParallelLoRAEngine {
         security_model_path: &str,
         use_cpu: bool,
     ) -> Result<Self> {
+        // Issue #2440: refuse before any classifier load. A timeout cannot
+        // unblock the darwin/arm64 deadlock inside native preparation.
+        if let Some(reason) = crate::core::unified_platform::unified_mmbert_refusal(
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            "",
+            &[intent_model_path, pii_model_path, security_model_path],
+        ) {
+            return Err(candle_core::Error::Msg(reason.to_string()));
+        }
+
         // Create intent classifier
         let intent_classifier = Arc::new(
             IntentLoRAClassifier::new(intent_model_path, use_cpu).map_err(|e| {
